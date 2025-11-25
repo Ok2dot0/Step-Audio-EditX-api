@@ -397,12 +397,20 @@ You can set up the environment required for running Step-Audio-EditX using the p
 # build docker
 docker build . -t step-audio-editx
 
-# run docker
+# run docker (Gradio Web Demo)
 docker run --rm --gpus all \
     -v /your/code/path:/app \
     -v /your/model/path:/model \
     -p 7860:7860 \
     step-audio-editx
+
+# run docker (HTTP API Server)
+docker run --rm --gpus all \
+    -v /your/code/path:/app \
+    -v /your/model/path:/model \
+    -p 8000:8000 \
+    step-audio-editx \
+    python3 api.py --model-path /model --model-source local --host 0.0.0.0 --port 8000
 ```
 #### Local Inference Demo
 > [!TIP]
@@ -522,6 +530,112 @@ python app.py --model-path path/to/quantized/model --model-source local --quanti
 
 # Example with custom settings:
 python app.py --model-path where_you_download_dir --model-source local --torch-dtype float16 --enable-auto-transcribe
+```
+
+#### Launch HTTP API Server
+Start a RESTful HTTP API server for programmatic access.
+
+```bash
+# Start the API server
+python api.py --model-path where_you_download_dir --model-source local
+
+# With custom host and port
+python api.py --model-path where_you_download_dir --model-source local --host 0.0.0.0 --port 8000
+
+# With quantization for memory efficiency
+python api.py --model-path where_you_download_dir --model-source local --quantization int8
+```
+
+**API Endpoints:**
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check and model status |
+| `/api/edit-types` | GET | Get supported edit types and options |
+| `/api/clone` | POST | Clone voice from reference audio |
+| `/api/edit` | POST | Apply audio editing (emotion, style, denoise, etc.) |
+| `/api/edit/iterative` | POST | Apply iterative audio editing |
+
+**Interactive API Documentation:**
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
+
+**Example API Usage with curl:**
+
+```bash
+# Voice cloning
+curl -X POST "http://localhost:8000/api/clone" \
+  -F "prompt_audio=@examples/fear_zh_female_prompt.wav" \
+  -F "prompt_text=我总觉得，有人在跟着我，我能听到奇怪的脚步声。" \
+  -F "target_text=可惜没有如果，已经发生的事情终究是发生了。" \
+  --output cloned_audio.wav
+
+# Emotion editing
+curl -X POST "http://localhost:8000/api/edit" \
+  -F "input_audio=@examples/fear_zh_female_prompt.wav" \
+  -F "audio_text=我总觉得，有人在跟着我，我能听到奇怪的脚步声。" \
+  -F "edit_type=emotion" \
+  -F "edit_info=happy" \
+  --output edited_audio.wav
+
+# Style editing (whisper)
+curl -X POST "http://localhost:8000/api/edit" \
+  -F "input_audio=@examples/whisper_prompt.wav" \
+  -F "audio_text=比如在工作间隙，做一些简单的伸展运动，放松一下身体，这样，会让你更有精力。" \
+  -F "edit_type=style" \
+  -F "edit_info=whisper" \
+  --output whisper_audio.wav
+
+# Denoising (no text required)
+curl -X POST "http://localhost:8000/api/edit" \
+  -F "input_audio=@examples/denoise_prompt.wav" \
+  -F "edit_type=denoise" \
+  --output denoised_audio.wav
+
+# Iterative editing (multiple iterations for stronger effect)
+curl -X POST "http://localhost:8000/api/edit/iterative" \
+  -F "input_audio=@examples/fear_zh_female_prompt.wav" \
+  -F "audio_text=我总觉得，有人在跟着我，我能听到奇怪的脚步声。" \
+  -F "edit_type=emotion" \
+  -F "edit_info=fear" \
+  -F "n_iterations=3" \
+  --output edited_fear_audio.wav
+
+# Get supported edit types
+curl "http://localhost:8000/api/edit-types"
+```
+
+**Example API Usage with Python:**
+
+```python
+import requests
+
+# Voice cloning
+with open("examples/reference.wav", "rb") as f:
+    response = requests.post(
+        "http://localhost:8000/api/clone",
+        files={"prompt_audio": f},
+        data={
+            "prompt_text": "Hello, this is a test.",
+            "target_text": "This is the text I want to synthesize."
+        }
+    )
+with open("cloned.wav", "wb") as f:
+    f.write(response.content)
+
+# Audio editing
+with open("examples/input.wav", "rb") as f:
+    response = requests.post(
+        "http://localhost:8000/api/edit",
+        files={"input_audio": f},
+        data={
+            "audio_text": "This is the original text.",
+            "edit_type": "emotion",
+            "edit_info": "happy"
+        }
+    )
+with open("edited.wav", "wb") as f:
+    f.write(response.content)
 ```
 
 ### 🔄 Model Quantization (Optional)
